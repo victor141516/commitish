@@ -2,6 +2,8 @@
 
 A simple, lightweight commitizen-like tool for creating standardized Git commit messages following the [Conventional Commits](https://www.conventionalcommits.org/) format.
 
+![](https://i.imgur.com/aZdFjsa.gif)
+
 ## 📖 Overview
 
 Commitish streamlines your Git workflow by helping you craft well-formatted commit messages without needing to remember the conventional commits syntax. It provides an interactive interface to select commit types, add scopes, and include detailed descriptions when needed.
