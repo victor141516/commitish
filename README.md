@@ -74,6 +74,7 @@ commitish feat -b
 ```
 -h, --help     Show the help message and exit
 -b, --body     Include a commit body (multi-line description)
+--no-verify    Skip git hooks (passes --no-verify to git commit)
 ```
 
 ### Commit Types

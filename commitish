@@ -14,12 +14,15 @@ Usage: commitish [OPTIONS] [INITIAL_TYPE]
 Options:
   -h, --help     Show this help message and exit
   -b, --body     Include a commit body (multi-line description)
+  --no-verify    Skip git hooks (passes --no-verify to git commit)
 
 Examples:
-  commitish               # Basic usage with interactive prompt
-  commitish fix           # Start with 'fix' type pre-selected
-  commitish -b            # Include a commit body
-  commitish fix -b        # Start with 'fix' and include body
+  commitish                    # Basic usage with interactive prompt
+  commitish fix                # Start with 'fix' type pre-selected
+  commitish -b                 # Include a commit body
+  commitish fix -b             # Start with 'fix' and include body
+  commitish --no-verify        # Skip git hooks
+  commitish fix -b --no-verify # Combine options
   
 Commit Types:
   feat:      A new feature
@@ -39,6 +42,7 @@ EOF
   # Process command line arguments
   local ask_for_body=false
   local initial_query=""
+  local no_verify=false
   
   while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -48,6 +52,10 @@ EOF
         ;;
       -b|--body)
         ask_for_body=true
+        shift
+        ;;
+      --no-verify)
+        no_verify=true
         shift
         ;;
       *)
@@ -163,9 +171,22 @@ ${body}"
 ${breaking}"
   fi
 
+  # Prepare git commit command
+  commit_command="git commit -m \"$commit_msg\""
+  
+  # Add --no-verify flag if requested
+  if $no_verify; then
+    commit_command="$commit_command --no-verify"
+  fi
+
   # Perform the commit
   echo -e "\nCommitting with message:\n---\n${commit_msg}\n---"
-  git commit -m "$commit_msg"
+  
+  if $no_verify; then
+    echo "Skipping git hooks (--no-verify)"
+  fi
+  
+  eval "$commit_command"
   
   return $?
 }
