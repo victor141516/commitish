@@ -1,0 +1,173 @@
+#!/bin/bash
+
+# commitish: A simple commitizen-like tool for git commits
+# This script helps create standardized commit messages following conventional commits format
+
+commitish() {
+  # Display help
+  show_help() {
+    cat << EOF
+commitish: A simple commitizen-like tool for creating conventional git commits
+
+Usage: commitish [OPTIONS] [INITIAL_TYPE]
+
+Options:
+  -h, --help     Show this help message and exit
+  -b, --body     Include a commit body (multi-line description)
+
+Examples:
+  commitish               # Basic usage with interactive prompt
+  commitish fix           # Start with 'fix' type pre-selected
+  commitish -b            # Include a commit body
+  commitish fix -b        # Start with 'fix' and include body
+  
+Commit Types:
+  feat:      A new feature
+  fix:       A bug fix
+  docs:      Documentation only changes
+  style:     Changes that do not affect the meaning of the code
+  refactor:  A code change that neither fixes a bug nor adds a feature
+  perf:      A code change that improves performance
+  test:      Adding missing tests or correcting existing tests
+  build:     Changes that affect the build system or external dependencies
+  ci:        Changes to CI configuration files and scripts
+  chore:     Other changes that don't modify src or test files
+  revert:    Reverts a previous commit
+EOF
+  }
+
+  # Process command line arguments
+  local ask_for_body=false
+  local initial_query=""
+  
+  while [[ "$#" -gt 0 ]]; do
+    case $1 in
+      -h|--help)
+        show_help
+        return 0
+        ;;
+      -b|--body)
+        ask_for_body=true
+        shift
+        ;;
+      *)
+        if [[ -z "$initial_query" ]]; then
+          initial_query="$1"
+        else
+          echo "Error: Unknown parameter: $1"
+          show_help
+          return 1
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  # Check if fzf is installed
+  if ! command -v fzf &> /dev/null; then
+    echo "Error: fzf is required but not installed. Please install it first."
+    return 1
+  fi
+
+  # Check if we're in a git repository
+  if ! git rev-parse --is-inside-work-tree &> /dev/null; then
+    echo "Error: Not in a git repository."
+    return 1
+  fi
+
+  # Check if there are staged changes
+  if git diff --cached --quiet; then
+    echo "Warning: No staged changes found. Did you forget to 'git add' your changes?"
+    read -p "Continue anyway? (Y/n): " continue_anyway
+    if [[ "$continue_anyway" =~ ^[Nn]$ ]]; then
+      return 1
+    fi
+  fi
+
+  # Define commit types according to conventional commits
+  commit_types=(
+    "feat:     A new feature"
+    "fix:      A bug fix"
+    "docs:     Documentation only changes"
+    "style:    Changes that do not affect the meaning of the code"
+    "refactor: A code change that neither fixes a bug nor adds a feature"
+    "perf:     A code change that improves performance"
+    "test:     Adding missing tests or correcting existing tests"
+    "build:    Changes that affect the build system or external dependencies"
+    "ci:       Changes to CI configuration files and scripts"
+    "chore:    Other changes that don't modify src or test files"
+    "revert:   Reverts a previous commit"
+  )
+
+  # Use fzf to select commit type
+  selected_type=$(printf "%s\n" "${commit_types[@]}" | 
+    fzf --height=40% --layout=reverse --prompt="Select commit type: " --header="Use arrows to navigate, type to filter" --query="$initial_query")
+  
+  # Exit if no type was selected
+  if [ -z "$selected_type" ]; then
+    echo "Commit aborted: No commit type selected"
+    return 1
+  fi
+
+  # Extract just the type part (before the ":")
+  type=$(echo "$selected_type" | cut -d':' -f1)
+
+  # Prompt for scope (optional)
+  read -p "Scope (optional): " scope
+  
+  # Create the commit prefix
+  if [ -n "$scope" ]; then
+    prefix="${type}(${scope})"
+  else
+    prefix="${type}"
+  fi
+
+  # Prompt for commit message
+  read -p "Commit message: " message
+  
+  if [ -z "$message" ]; then
+    echo "Commit aborted: Commit message is required"
+    return 1
+  fi
+
+  # Prompt for body only if -b flag is passed
+  body=""
+  if $ask_for_body; then
+    echo "Commit body (press Ctrl+D when done):"
+    body=$(cat)
+  fi
+
+  # Prompt for breaking changes (optional)
+  read -p "Breaking changes? (y/N): " has_breaking_changes
+  if [[ "$has_breaking_changes" =~ ^[Yy]$ ]]; then
+    read -p "Breaking changes description: " breaking_changes
+    if [ -n "$breaking_changes" ]; then
+      breaking="BREAKING CHANGE: ${breaking_changes}"
+    fi
+  fi
+
+  # Construct the commit message
+  commit_msg="${prefix}: ${message}"
+  
+  # Add body if provided
+  if [ -n "$body" ]; then
+    commit_msg="${commit_msg}
+
+${body}"
+  fi
+
+  # Add breaking changes if provided
+  if [ -n "$breaking" ]; then
+    commit_msg="${commit_msg}
+
+${breaking}"
+  fi
+
+  # Perform the commit
+  echo -e "\nCommitting with message:\n---\n${commit_msg}\n---"
+  git commit -m "$commit_msg"
+  
+  return $?
+}
+
+commitish $@
