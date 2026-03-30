@@ -35,12 +35,15 @@ if ! command -v jq &> /dev/null; then
   exit 1
 fi
 
-# Get staged diff
-staged_diff=$(git diff --cached --stat 2>/dev/null)
+# Get staged changes: full diff + file summary
+staged_diff=$(git diff --cached 2>/dev/null)
+staged_stat=$(git diff --cached --stat 2>/dev/null)
 if [ -z "$staged_diff" ]; then
   echo "Warning: No staged changes found"
   staged_diff="No staged changes"
+  staged_stat="No staged changes"
 fi
+staged_changes="File summary:\n$staged_stat\n\nFull diff:\n$staged_diff"
 
 # Get last 10 commit messages to provide context to OpenAI
 recent_commits=$(git log --oneline -10 2>/dev/null | sed 's/^[a-f0-9]* //' || echo "")
@@ -172,24 +175,24 @@ GUIDELINES:
 # Run API calls in parallel, capturing output into variables via temp file descriptors
 exec {type_fd}< <(make_api_call \
   "You are a commit message expert following conventional commits format. You analyze diffs to determine the primary intent of a change, prioritizing code and logic changes over ancillary updates like documentation or config files." \
-  "Staged changes:\n$staged_diff\n\n$type_prompt" \
+  "Staged changes:\n$staged_changes\n\n$type_prompt" \
   "commit-type")
 
 if $uses_scope; then
   exec {scope_fd}< <(make_api_call \
     "You suggest concise, meaningful commit scopes that reflect the primary area of the codebase affected. You match the user's existing scope conventions when possible. Default to 'none' if unsure." \
-    "Commit messages: \n$recent_commits\n\nStaged changes:\n$staged_diff\n\n$scope_prompt" \
+    "Commit messages: \n$recent_commits\n\nStaged changes:\n$staged_changes\n\n$scope_prompt" \
     "scope-suggestion")
 fi
 
 exec {msg_fd}< <(make_api_call \
   "You write clear, concise conventional commit messages that capture the primary functional change. You prioritize describing code and logic changes over documentation or config updates. When a commit contains both, the message should reflect the core change. Return ONLY the message text, no prefixes." \
-  "Staged changes:\n$staged_diff\n\n$msg_prompt" \
+  "Staged changes:\n$staged_changes\n\n$msg_prompt" \
   "commit-message")
 
 exec {body_fd}< <(make_api_call \
   "You write helpful commit body text that explains the reasoning and context behind changes. You focus on WHY a change was made and any non-obvious technical decisions, not on listing which files were changed. You keep bodies brief and only suggest one when the change truly warrants explanation. Return ONLY the body content, no prefixes or labels." \
-  "Staged changes:\n$staged_diff\n\n$body_prompt" \
+  "Staged changes:\n$staged_changes\n\n$body_prompt" \
   "commit-body")
 
 # Read results from file descriptors (cat blocks until subprocess finishes)
