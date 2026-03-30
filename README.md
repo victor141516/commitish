@@ -37,13 +37,7 @@ curl -o /usr/local/bin/commitish-ai https://raw.githubusercontent.com/victor1415
 chmod +x /usr/local/bin/commitish /usr/local/bin/commitish-ai
 ```
 
-3. Source the script in your shell configuration file (`.bashrc`, `.zshrc`, etc.):
-
-```bash
-echo 'source /usr/local/bin/commitish' >> ~/.zshrc
-```
-
-4. For AI features, set your OpenAI API key:
+3. For AI features, set your OpenAI API key:
 
 ```bash
 echo 'export OPENAI_API_KEY=your_api_key' >> ~/.zshrc
@@ -56,14 +50,13 @@ For ZSH shell autocomplete support:
 1. Download the completion file:
 
 ```bash
-curl -o ./_commitish https://raw.githubusercontent.com/victor141516/commitish/refs/heads/master/_commitish
+curl -o /usr/local/share/zsh/site-functions/_commitish https://raw.githubusercontent.com/victor141516/commitish/refs/heads/master/_commitish
 ```
 
-2. Move it to your ZSH functions directory:
+2. Make it executable:
 
 ```bash
-chmod +x ./_commitish
-sudo cp ./_commitish /usr/local/share/zsh/site-functions/_commitish
+chmod +x /usr/local/share/zsh/site-functions/_commitish
 ```
 
 3. Restart your shell or run:
