@@ -3,6 +3,12 @@
 # commitish: A simple commitizen-like tool for git commits
 # This script helps create standardized commit messages following conventional commits format
 
+# Source AI module if available
+SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+if [ -f "${SCRIPT_DIR}/commitish-ai" ]; then
+  source "${SCRIPT_DIR}/commitish-ai"
+fi
+
 commitish() {
   # Display help
   show_help() {
@@ -15,6 +21,7 @@ Options:
   -h, --help     Show this help message and exit
   -b, --body     Include a commit body (multi-line description)
   --no-verify    Skip git hooks (passes --no-verify to git commit)
+  --ai           Use AI to suggest commit details (auto-fills type, scope, message, body; requires commitish-ai and OPENAI_API_KEY env var)
 
 Examples:
   commitish                    # Basic usage with interactive prompt
@@ -43,6 +50,7 @@ EOF
   local ask_for_body=false
   local initial_query=""
   local no_verify=false
+  local use_ai=false
   
   while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -56,6 +64,10 @@ EOF
         ;;
       --no-verify)
         no_verify=true
+        shift
+        ;;
+      --ai)
+        use_ai=true
         shift
         ;;
       *)
@@ -107,7 +119,36 @@ EOF
     "revert:   Reverts a previous commit"
   )
 
+  # Get AI suggestions if requested
+  local ai_type="" ai_scope="" ai_message="" ai_body=""
+  if $use_ai; then
+    echo "Getting AI suggestions..."
+    local ai_result
+    if ai_result=$(commitish_ai 2>&1); then
+      ai_type=$(echo "$ai_result" | jq -r '.type // empty')
+      ai_scope=$(echo "$ai_result" | jq -r '.scope // empty')
+      ai_message=$(echo "$ai_result" | jq -r '.message // empty')
+      ai_body=$(echo "$ai_result" | jq -r '.body // empty')
+      
+      # Filter out 'none' values
+      if [[ "$ai_scope" == "none" ]]; then
+        ai_scope=""
+      fi
+      if [[ "$ai_body" == "none" ]]; then
+        ai_body=""
+      fi
+      
+      echo "AI suggestion received!"
+    else
+      echo "Warning: AI suggestion failed: $ai_result"
+    fi
+  fi
+
   # Use fzf to select commit type
+  if [ -z "$initial_query" ] && [ -n "$ai_type" ]; then
+    initial_query="$ai_type"
+  fi
+  
   selected_type=$(printf "%s\n" "${commit_types[@]}" | 
     fzf --height=40% --layout=reverse --prompt="Select commit type: " --header="Use arrows to navigate, type to filter" --query="$initial_query")
   
@@ -120,8 +161,15 @@ EOF
   # Extract just the type part (before the ":")
   type=$(echo "$selected_type" | cut -d':' -f1)
 
-  # Prompt for scope (optional)
-  read -p "Scope (optional): " scope
+  # Prompt for scope (optional) - prepopulate with AI suggestion
+  local scope_prompt="Scope (optional)"
+  if [ -n "$ai_scope" ]; then
+    scope_prompt="Scope (optional) [$ai_scope]"
+  fi
+  read -p "$scope_prompt: " scope
+  if [ -z "$scope" ] && [ -n "$ai_scope" ]; then
+    scope="$ai_scope"
+  fi
   
   # Create the commit prefix
   if [ -n "$scope" ]; then
@@ -130,19 +178,41 @@ EOF
     prefix="${type}"
   fi
 
-  # Prompt for commit message
-  read -p "Commit message: " message
+  # Prompt for commit message - prepopulate with AI suggestion
+  local msg_prompt="Commit message"
+  if [ -n "$ai_message" ]; then
+    msg_prompt="Commit message [$ai_message]"
+  fi
+  read -p "$msg_prompt: " message
+  if [ -z "$message" ] && [ -n "$ai_message" ]; then
+    message="$ai_message"
+  fi
   
   if [ -z "$message" ]; then
     echo "Commit aborted: Commit message is required"
     return 1
   fi
 
-  # Prompt for body only if -b flag is passed
+  # Prompt for body if -b flag is passed, or if AI generated one
   body=""
-  if $ask_for_body; then
-    echo "Commit body (press Ctrl+D when done):"
-    body=$(cat)
+  if $ask_for_body || ($use_ai && [ -n "$ai_body" ]); then
+    if $use_ai && [ -n "$ai_body" ]; then
+      # Use editor to let user modify the AI-generated body
+      local editor="${EDITOR:-vim}"
+      local body_tmp
+      body_tmp=$(mktemp)
+      echo "$ai_body" > "$body_tmp"
+      $editor "$body_tmp"
+      body=$(cat "$body_tmp")
+      rm -f "$body_tmp"
+      # If user emptied the file, don't use a body
+      if [ -z "$body" ]; then
+        body=""
+      fi
+    else
+      echo "Commit body (press Ctrl+D when done):"
+      body=$(cat)
+    fi
   fi
 
   # Prompt for breaking changes (optional)

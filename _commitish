@@ -1,0 +1,42 @@
+#compdef commitish
+
+# ZSH completion for commitish
+
+# Place this file in your fpath (e.g., /usr/share/zsh/site-functions/\_commitish)
+
+# and make sure it's executable: chmod +x \_commitish
+
+\_commitish() {
+local -a opts args
+opts=(
+'-h[Show help message]'
+'--help[Show help message]'
+'-b[Include a commit body (multi-line description)]'
+'--body[Include a commit body (multi-line description)]'
+'--no-verify[Skip git hooks]'
+'--ai[Use AI to suggest commit details]'
+)
+
+args=(
+'feat:A new feature'
+'fix:A bug fix'
+'docs:Documentation only changes'
+'style:Changes that do not affect the meaning of the code'
+'refactor:A code change that neither fixes a bug nor adds a feature'
+'perf:A code change that improves performance'
+'test:Adding missing tests or correcting existing tests'
+'build:Changes that affect the build system or external dependencies'
+'ci:Changes to CI configuration files and scripts'
+'chore:Other changes that'\''t modify src or test files'
+'revert:Reverts a previous commit'
+)
+
+\_arguments -s "$opts[@]" && return
+
+local -a commit_types
+commit_types=(${args%%:\*})
+
+\_describe 'commit type' commit_types
+}
+
+\_commitish "$@"

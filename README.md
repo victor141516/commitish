@@ -24,16 +24,52 @@ Commitish streamlines your Git workflow by helping you craft well-formatted comm
 
 ## 🚀 Installation
 
-1. Download the script:
+1. Download the scripts:
 
 ```bash
 curl -o /usr/local/bin/commitish https://raw.githubusercontent.com/victor141516/commitish/refs/heads/master/commitish
+curl -o /usr/local/bin/commitish-ai https://raw.githubusercontent.com/victor141516/commitish/refs/heads/master/commitish-ai
 ```
 
-2. Make the script executable:
+2. Make the scripts executable:
 
 ```bash
-chmod +x /usr/local/bin/commitish
+chmod +x /usr/local/bin/commitish /usr/local/bin/commitish-ai
+```
+
+3. Source the script in your shell configuration file (`.bashrc`, `.zshrc`, etc.):
+
+```bash
+echo 'source /usr/local/bin/commitish' >> ~/.zshrc
+```
+
+4. For AI features, set your OpenAI API key:
+
+```bash
+echo 'export OPENAI_API_KEY=your_api_key' >> ~/.zshrc
+```
+
+### ZSH Tab Completion
+
+For ZSH shell autocomplete support:
+
+1. Download the completion file:
+
+```bash
+curl -o ./_commitish https://raw.githubusercontent.com/victor141516/commitish/refs/heads/master/_commitish
+```
+
+2. Move it to your ZSH functions directory:
+
+```bash
+chmod +x ./_commitish
+sudo cp ./_commitish /usr/local/share/zsh/site-functions/_commitish
+```
+
+3. Restart your shell or run:
+
+```bash
+autoload -U _commitish
 ```
 
 ## 📋 Usage
@@ -77,6 +113,36 @@ commitish feat -b
 -h, --help     Show the help message and exit
 -b, --body     Include a commit body (multi-line description)
 --no-verify    Skip git hooks (passes --no-verify to git commit)
+--ai           Use AI to suggest commit details (requires OPENAI_API_KEY)
+```
+
+### AI Integration
+
+The `--ai` option uses OpenAI to suggest commit type, scope, message, and body based on your staged changes.
+
+**Requirements:**
+
+- `OPENAI_API_KEY` environment variable set with your OpenAI API key
+- `jq` installed (for JSON parsing)
+
+**Setup:**
+
+```bash
+export OPENAI_API_KEY=your_api_key_here
+```
+
+**How it works:**
+
+1. Analyzes your staged changes (git diff --cached)
+2. Reviews your last 5 commits to understand your commit style
+3. If you typically use scopes (e.g., `feat(api):`), it will suggest scopes
+4. Makes parallel API calls to get suggestions for type, scope, message, and body
+5. Prepopulates the interactive prompts with suggestions (you can accept or modify)
+
+**Example:**
+
+```bash
+commitish --ai  # Get AI suggestions and interactively review/modify them
 ```
 
 ### Commit Types
