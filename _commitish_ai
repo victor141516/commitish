@@ -138,44 +138,58 @@ fi
 type_prompt="Given the following staged changes, suggest the most appropriate conventional commit type.
 Choose from: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
 
+Important: Focus on the PRIMARY purpose of the change. If both code and documentation changes are present, the type should reflect the code change (e.g. 'feat' or 'fix'), not the docs update. Only use 'docs' if the ONLY changes are documentation.
+
 Respond with ONLY the type, nothing else."
 
 # 2. Get scope suggestion only if user typically uses scopes
 scope_prompt="Based on the staged changes, suggest a short scope (2-3 words max, lowercase, no spaces) for this commit.
 If no specific scope makes sense, respond with 'none'.
-Use one of the scopes that the user usually uses in their commits. You can create a new scope if needed."
+Use one of the scopes that the user usually uses in their commits. You can create a new scope if needed.
+The scope should reflect the main area of the codebase affected by the PRIMARY change, not secondary or ancillary files."
 
 # 3. Get commit message suggestion
 msg_prompt="Based on the staged changes, suggest a concise commit message (under 72 characters).
-Focus on WHAT changed, not WHY.
-Do NOT include the type or scope prefix - just the message description."
+
+IMPORTANT GUIDELINES:
+- Focus on the PRIMARY, most impactful change. If the commit includes both code/logic changes and documentation updates (like README), prioritize describing the code/logic change.
+- Documentation, config, or README updates that accompany a code change are secondary — do NOT make them the focus of the message.
+- Describe WHAT changed functionally, not which files were edited. For example, prefer 'add retry logic to API calls' over 'update api.js and README'.
+- Use imperative mood (e.g. 'add', 'fix', 'remove', 'refactor'), lowercase, no period at the end.
+- Do NOT include the type or scope prefix — just the message description.
+- If the diff is too large to understand fully, focus on the most significant functional change visible in the file stats."
 
 # 4. Get commit body - ONLY the body, not the commit message
-body_prompt="If the changes are complex enough to need explanation, suggest a brief commit body (2-3 sentences max).
-The body should explain WHY or HOW the change was made, not WHAT changed (that's the commit message).
-If the change is simple and doesn't need explanation, respond with 'none'.
-Return ONLY the body text, do not include any headers like 'Body:' or 'Brief commit body:'."
+body_prompt="Analyze the staged changes and decide if a commit body is needed.
+
+GUIDELINES:
+- If the change is straightforward and self-explanatory from the commit message alone (e.g. a small bug fix, renaming, adding a simple feature), respond with 'none'.
+- If the change is complex, involves trade-offs, or has non-obvious reasoning, write a brief commit body (2-3 sentences max).
+- The body should explain WHY the change was made or HOW it works at a high level — do NOT repeat WHAT changed (that's the commit message's job).
+- Focus on the core code/logic changes. If documentation was also updated, you don't need to mention it in the body unless the documentation change itself is the main point.
+- Do NOT include any headers, labels, or prefixes like 'Body:' or 'Brief commit body:'.
+- Return ONLY the body text, or 'none'."
 
 # Run API calls in parallel, capturing output into variables via temp file descriptors
 exec {type_fd}< <(make_api_call \
-  "You are a commit message expert following conventional commits format." \
+  "You are a commit message expert following conventional commits format. You analyze diffs to determine the primary intent of a change, prioritizing code and logic changes over ancillary updates like documentation or config files." \
   "Staged changes:\n$staged_diff\n\n$type_prompt" \
   "commit-type")
 
 if $uses_scope; then
   exec {scope_fd}< <(make_api_call \
-    "You suggest concise, meaningful commit scopes only when clearly appropriate. Default to 'none' if unsure." \
+    "You suggest concise, meaningful commit scopes that reflect the primary area of the codebase affected. You match the user's existing scope conventions when possible. Default to 'none' if unsure." \
     "Commit messages: \n$recent_commits\n\nStaged changes:\n$staged_diff\n\n$scope_prompt" \
     "scope-suggestion")
 fi
 
 exec {msg_fd}< <(make_api_call \
-  "You write clear, concise conventional commit messages. Return ONLY the message text, no prefixes." \
+  "You write clear, concise conventional commit messages that capture the primary functional change. You prioritize describing code and logic changes over documentation or config updates. When a commit contains both, the message should reflect the core change. Return ONLY the message text, no prefixes." \
   "Staged changes:\n$staged_diff\n\n$msg_prompt" \
   "commit-message")
 
 exec {body_fd}< <(make_api_call \
-  "You write helpful commit body text that explains the reasoning behind changes. Return ONLY the body content, no prefixes or labels." \
+  "You write helpful commit body text that explains the reasoning and context behind changes. You focus on WHY a change was made and any non-obvious technical decisions, not on listing which files were changed. You keep bodies brief and only suggest one when the change truly warrants explanation. Return ONLY the body content, no prefixes or labels." \
   "Staged changes:\n$staged_diff\n\n$body_prompt" \
   "commit-body")
 
