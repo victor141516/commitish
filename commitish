@@ -1,13 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env zsh
 
 # commitish: A simple commitizen-like tool for git commits
 # This script helps create standardized commit messages following conventional commits format
-
-# Source AI module if available
-SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
-if [ -f "${SCRIPT_DIR}/commitish-ai" ]; then
-  source "${SCRIPT_DIR}/commitish-ai"
-fi
 
 commitish() {
   # Display help
@@ -21,7 +15,7 @@ Options:
   -h, --help     Show this help message and exit
   -b, --body     Include a commit body (multi-line description)
   --no-verify    Skip git hooks (passes --no-verify to git commit)
-  --ai           Use AI to suggest commit details (auto-fills type, scope, message, body; requires commitish-ai and OPENAI_API_KEY env var)
+  --ai           Use AI to suggest commit details (auto-fills type, scope, message, body; requires _commitish_ai in PATH and OPENAI_API_KEY env var)
 
 Examples:
   commitish                    # Basic usage with interactive prompt
@@ -98,7 +92,7 @@ EOF
   # Check if there are staged changes
   if git diff --cached --quiet; then
     echo "Warning: No staged changes found. Did you forget to 'git add' your changes?"
-    read -p "Continue anyway? (Y/n): " continue_anyway
+    read "?Continue anyway? (Y/n): " continue_anyway
     if [[ "$continue_anyway" =~ ^[Nn]$ ]]; then
       return 1
     fi
@@ -122,9 +116,13 @@ EOF
   # Get AI suggestions if requested
   local ai_type="" ai_scope="" ai_message="" ai_body=""
   if $use_ai; then
+    if ! command -v _commitish_ai &> /dev/null; then
+      echo "Error: _commitish_ai command not found in PATH. Please install it to use --ai." >&2
+      return 1
+    fi
     echo "Getting AI suggestions..."
     local ai_result
-    if ai_result=$(commitish_ai 2>&1); then
+    if ai_result=$(_commitish_ai 2>&1); then
       ai_type=$(echo "$ai_result" | jq -r '.type // empty')
       ai_scope=$(echo "$ai_result" | jq -r '.scope // empty')
       ai_message=$(echo "$ai_result" | jq -r '.message // empty')
@@ -138,7 +136,6 @@ EOF
         ai_body=""
       fi
       
-      echo "AI suggestion received!"
     else
       echo "Warning: AI suggestion failed: $ai_result"
     fi
@@ -166,7 +163,7 @@ EOF
   if [ -n "$ai_scope" ]; then
     scope_prompt="Scope (optional) [$ai_scope]"
   fi
-  read -p "$scope_prompt: " scope
+  read "?${scope_prompt}: " scope
   if [ -z "$scope" ] && [ -n "$ai_scope" ]; then
     scope="$ai_scope"
   fi
@@ -183,7 +180,7 @@ EOF
   if [ -n "$ai_message" ]; then
     msg_prompt="Commit message [$ai_message]"
   fi
-  read -p "$msg_prompt: " message
+  read "?${msg_prompt}: " message
   if [ -z "$message" ] && [ -n "$ai_message" ]; then
     message="$ai_message"
   fi
@@ -198,7 +195,7 @@ EOF
   if $ask_for_body || ($use_ai && [ -n "$ai_body" ]); then
     if $use_ai && [ -n "$ai_body" ]; then
       # Use editor to let user modify the AI-generated body
-      local editor="${EDITOR:-vim}"
+      local editor=(${=EDITOR:-vi})
       local body_tmp
       body_tmp=$(mktemp)
       echo "$ai_body" > "$body_tmp"
@@ -216,9 +213,9 @@ EOF
   fi
 
   # Prompt for breaking changes (optional)
-  read -p "Breaking changes? (y/N): " has_breaking_changes
+  read "?Breaking changes? (y/N): " has_breaking_changes
   if [[ "$has_breaking_changes" =~ ^[Yy]$ ]]; then
-    read -p "Breaking changes description: " breaking_changes
+    read "?Breaking changes description: " breaking_changes
     if [ -n "$breaking_changes" ]; then
       breaking="BREAKING CHANGE: ${breaking_changes}"
     fi

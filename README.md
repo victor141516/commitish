@@ -28,13 +28,13 @@ Commitish streamlines your Git workflow by helping you craft well-formatted comm
 
 ```bash
 curl -o /usr/local/bin/commitish https://raw.githubusercontent.com/victor141516/commitish/refs/heads/master/commitish
-curl -o /usr/local/bin/commitish-ai https://raw.githubusercontent.com/victor141516/commitish/refs/heads/master/commitish-ai
+curl -o /usr/local/bin/_commitish_ai https://raw.githubusercontent.com/victor141516/commitish/refs/heads/master/_commitish_ai
 ```
 
 2. Make the scripts executable:
 
 ```bash
-chmod +x /usr/local/bin/commitish /usr/local/bin/commitish-ai
+chmod +x /usr/local/bin/commitish /usr/local/bin/_commitish_ai
 ```
 
 3. For AI features, set your OpenAI API key:
@@ -113,8 +113,11 @@ commitish feat -b
 
 The `--ai` option uses OpenAI to suggest commit type, scope, message, and body based on your staged changes.
 
+It requires the `_commitish_ai` helper command to be installed and available in your `PATH` (see [Installation](#-installation)).
+
 **Requirements:**
 
+- `_commitish_ai` installed and in `PATH`
 - `OPENAI_API_KEY` environment variable set with your OpenAI API key
 - `jq` installed (for JSON parsing)
 

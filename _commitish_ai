@@ -1,0 +1,205 @@
+#!/usr/bin/env zsh
+
+# _commitish_ai: OpenAI integration for commitish
+# This script provides AI-powered commit suggestions using OpenAI's API.
+# It is intended for internal use by commitish only.
+
+# Environment variable for API key
+OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+
+verbose=false
+
+# Check for verbose flag
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    -v|--verbose)
+      verbose=true
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+# Check if API key is set
+if [ -z "$OPENAI_API_KEY" ]; then
+  echo "Error: OPENAI_API_KEY environment variable is not set" >&2
+  echo "Please set it with: export OPENAI_API_KEY=your_api_key" >&2
+  exit 1
+fi
+
+# Check if jq is installed (needed for JSON parsing)
+if ! command -v jq &> /dev/null; then
+  echo "Error: jq is required for AI features but not installed."
+  exit 1
+fi
+
+# Get staged diff
+staged_diff=$(git diff --cached --stat 2>/dev/null)
+if [ -z "$staged_diff" ]; then
+  echo "Warning: No staged changes found"
+  staged_diff="No staged changes"
+fi
+
+# Get last 10 commit messages to provide context to OpenAI
+recent_commits=$(git log --oneline -10 2>/dev/null | sed 's/^[a-f0-9]* //' || echo "")
+
+# Function to make API call with retry - outputs to stdout
+make_api_call() {
+  local system_prompt="$1"
+  local user_prompt="$2"
+  local call_name="${3:-unknown}"
+  local max_retries=3
+  local retry_count=0
+
+  # Build the JSON payload
+  local json_payload=$(jq -n --arg system "$system_prompt" --arg user "$user_prompt" '{
+    model: "gpt-4o",
+    messages: [
+      {role: "system", content: $system},
+      {role: "user", content: $user}
+    ],
+    temperature: 0.7
+  }')
+
+  if $verbose; then
+    echo "[VERBOSE] Making API call: $call_name" >&2
+    echo "[VERBOSE] Request:" >&2
+    echo "$json_payload" | jq '.' >&2
+  fi
+
+  while [ $retry_count -lt $max_retries ]; do
+    local response=$(curl -s --max-time 30 \
+      -X POST "https://api.openai.com/v1/chat/completions" \
+      -H "Authorization: Bearer $OPENAI_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d "$json_payload")
+
+    # Check if response contains an error
+    if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
+      local error_msg=$(echo "$response" | jq -r '.error.message // "Unknown error"')
+      retry_count=$((retry_count + 1))
+      if $verbose; then
+        echo "[VERBOSE] Error: $error_msg" >&2
+        echo "[VERBOSE] Retry $retry_count/$max_retries..." >&2
+      fi
+      sleep 2
+      continue
+    fi
+
+    if $verbose; then
+      echo "[VERBOSE] Response for $call_name:" >&2
+      echo "$response" | jq '.choices[0].message.content' >&2
+    fi
+
+    # Output just the response content to stdout
+    echo "$response" | jq -r '.choices[0].message.content // empty'
+    return 0
+  done
+
+  echo "[ERROR] Failed to get response from OpenAI after $max_retries attempts" >&2
+  return 1
+}
+
+# Escape string for JSON
+json_escape() {
+  local str="$1"
+  if [ -z "$str" ]; then
+    echo ""
+  else
+    # Remove carriage returns and trim trailing newlines/spaces
+    printf "$str" | jq -Rs '.' | sed 's/^"//;s/"$//'
+  fi
+}
+
+# 0. First check if user typically uses scopes in their commits
+uses_scope_prompt="Look at these commit messages and determine if the user typically includes a scope (like feat(api): or fix(ui):) in their commits.
+Scope is the part in parentheses after the type. In the previous example, 'api' and 'ui' are scopes. If the commit messages are like 'feat: add button' without any parentheses, then the user doesn't use scopes.
+Respond with ONLY 'yes' if they use scopes, or 'no' if they don't.
+Commit messages:
+$recent_commits"
+
+uses_scope_response=$(make_api_call \
+  "You analyze commit message patterns. Respond with only 'yes' or 'no'." \
+  "$uses_scope_prompt" \
+  "uses-scope-check" | tr -d '\r' | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]//g')
+
+uses_scope=false
+if echo "$uses_scope_response" | grep -q "yes"; then
+  uses_scope=true
+fi
+
+if $verbose; then
+  echo "[VERBOSE] User typically uses scopes: $uses_scope (response: '$uses_scope_response')" >&2
+fi
+
+# 1. Get commit type suggestion
+type_prompt="Given the following staged changes, suggest the most appropriate conventional commit type.
+Choose from: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+
+Respond with ONLY the type, nothing else."
+
+# 2. Get scope suggestion only if user typically uses scopes
+scope_prompt="Based on the staged changes, suggest a short scope (2-3 words max, lowercase, no spaces) for this commit.
+If no specific scope makes sense, respond with 'none'.
+Use one of the scopes that the user usually uses in their commits. You can create a new scope if needed."
+
+# 3. Get commit message suggestion
+msg_prompt="Based on the staged changes, suggest a concise commit message (under 72 characters).
+Focus on WHAT changed, not WHY.
+Do NOT include the type or scope prefix - just the message description."
+
+# 4. Get commit body - ONLY the body, not the commit message
+body_prompt="If the changes are complex enough to need explanation, suggest a brief commit body (2-3 sentences max).
+The body should explain WHY or HOW the change was made, not WHAT changed (that's the commit message).
+If the change is simple and doesn't need explanation, respond with 'none'.
+Return ONLY the body text, do not include any headers like 'Body:' or 'Brief commit body:'."
+
+# Run API calls in parallel, capturing output into variables via temp file descriptors
+exec {type_fd}< <(make_api_call \
+  "You are a commit message expert following conventional commits format." \
+  "Staged changes:\n$staged_diff\n\n$type_prompt" \
+  "commit-type")
+
+if $uses_scope; then
+  exec {scope_fd}< <(make_api_call \
+    "You suggest concise, meaningful commit scopes only when clearly appropriate. Default to 'none' if unsure." \
+    "Commit messages: \n$recent_commits\n\nStaged changes:\n$staged_diff\n\n$scope_prompt" \
+    "scope-suggestion")
+fi
+
+exec {msg_fd}< <(make_api_call \
+  "You write clear, concise conventional commit messages. Return ONLY the message text, no prefixes." \
+  "Staged changes:\n$staged_diff\n\n$msg_prompt" \
+  "commit-message")
+
+exec {body_fd}< <(make_api_call \
+  "You write helpful commit body text that explains the reasoning behind changes. Return ONLY the body content, no prefixes or labels." \
+  "Staged changes:\n$staged_diff\n\n$body_prompt" \
+  "commit-body")
+
+# Read results from file descriptors (cat blocks until subprocess finishes)
+ai_type=$(cat <&$type_fd | tr -d '\r')
+exec {type_fd}<&-
+
+if $uses_scope; then
+  ai_scope=$(cat <&$scope_fd | tr -d '\r')
+  exec {scope_fd}<&-
+else
+  ai_scope="none"
+fi
+
+ai_msg=$(cat <&$msg_fd | tr -d '\r')
+exec {msg_fd}<&-
+
+ai_body=$(cat <&$body_fd | tr -d '\r')
+exec {body_fd}<&-
+
+# Output as JSON for easy parsing by commitish
+printf '{\n'
+printf '  "type": "%s",\n' "$(json_escape "$ai_type")"
+printf '  "scope": "%s",\n' "$(json_escape "$ai_scope")"
+printf '  "message": "%s",\n' "$(json_escape "$ai_msg")"
+printf '  "body": "%s"\n' "$(json_escape "$ai_body")"
+printf '}\n'
