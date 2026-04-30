@@ -14,7 +14,7 @@ opts=(
 '-b[Include a commit body (multi-line description)]'
 '--body[Include a commit body (multi-line description)]'
 '--no-verify[Skip git hooks]'
-'--ai[Use AI to suggest commit details]'
+'--ai[Use AI to suggest commit details; any words following are used as additional context]'
 )
 
 args=(

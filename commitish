@@ -15,7 +15,7 @@ Options:
   -h, --help     Show this help message and exit
   -b, --body     Include a commit body (multi-line description)
   --no-verify    Skip git hooks (passes --no-verify to git commit)
-  --ai           Use AI to suggest commit details (auto-fills type, scope, message, body; requires _commitish_ai in PATH and OPENAI_API_KEY env var)
+  --ai [TEXT]    Use AI to suggest commit details (auto-fills type, scope, message, body; requires _commitish_ai in PATH and OPENAI_API_KEY env var). Optionally pass additional context TEXT to help the AI generate a better result.
 
 Examples:
   commitish                    # Basic usage with interactive prompt
@@ -24,6 +24,8 @@ Examples:
   commitish fix -b             # Start with 'fix' and include body
   commitish --no-verify        # Skip git hooks
   commitish fix -b --no-verify # Combine options
+  commitish --ai               # Use AI to generate commit message
+  commitish --ai "fixes the flaky auth timeout issue"  # AI with additional context
   
 Commit Types:
   feat:      A new feature
@@ -45,6 +47,7 @@ EOF
   local initial_query=""
   local no_verify=false
   local use_ai=false
+  local ai_instructions=""
   
   while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -63,6 +66,15 @@ EOF
       --ai)
         use_ai=true
         shift
+        # Collect all remaining non-flag arguments as AI context text
+        local ai_instructions_parts=()
+        while [[ "$#" -gt 0 ]] && [[ "$1" != -* ]]; do
+          ai_instructions_parts+=("$1")
+          shift
+        done
+        if [[ ${#ai_instructions_parts[@]} -gt 0 ]]; then
+          ai_instructions="${ai_instructions_parts[*]}"
+        fi
         ;;
       *)
         if [[ -z "$initial_query" ]]; then
@@ -122,7 +134,11 @@ EOF
     fi
     echo "Getting AI suggestions..."
     local ai_result
-    if ai_result=$(_commitish_ai 2>&1); then
+    local ai_cmd_args=()
+    if [[ -n "$ai_instructions" ]]; then
+      ai_cmd_args=(--instructions "$ai_instructions")
+    fi
+    if ai_result=$(_commitish_ai "${ai_cmd_args[@]}" 2>&1); then
       ai_type=$(echo "$ai_result" | jq -r '.type // empty')
       ai_scope=$(echo "$ai_result" | jq -r '.scope // empty')
       ai_message=$(echo "$ai_result" | jq -r '.message // empty')

@@ -106,7 +106,9 @@ commitish feat -b
 -h, --help     Show the help message and exit
 -b, --body     Include a commit body (multi-line description)
 --no-verify    Skip git hooks (passes --no-verify to git commit)
---ai           Use AI to suggest commit details (requires OPENAI_API_KEY)
+--ai [TEXT]    Use AI to suggest commit details (requires OPENAI_API_KEY).
+               Optionally pass additional context TEXT to help the AI
+               generate a better result.
 ```
 
 ### AI Integration
@@ -135,10 +137,22 @@ export OPENAI_API_KEY=your_api_key_here
 4. Makes parallel API calls to get suggestions for type, scope, message, and body
 5. Prepopulates the interactive prompts with suggestions (you can accept or modify)
 
+**Providing additional context:**
+
+Sometimes the diff and git log alone don't give the AI enough information to generate an accurate commit message — for example, when the change is part of a larger effort, fixes a non-obvious bug, or relates to external constraints not visible in the code. You can pass a free-form text string after `--ai` to give the AI that extra context:
+
+```bash
+commitish --ai "fixes the flaky auth timeout on slow connections"
+commitish --ai "part of the payment refactor — removes the legacy Stripe v2 adapter"
+```
+
+The text is optional. When omitted, `--ai` behaves exactly as before.
+
 **Example:**
 
 ```bash
 commitish --ai  # Get AI suggestions and interactively review/modify them
+commitish --ai "rewrites retry logic to use exponential backoff"  # With extra context
 ```
 
 ### Commit Types

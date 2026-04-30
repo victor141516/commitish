@@ -8,12 +8,18 @@
 OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 
 verbose=false
+user_instructions=""
 
-# Check for verbose flag
+# Check for flags
 while [[ "$#" -gt 0 ]]; do
   case $1 in
     -v|--verbose)
       verbose=true
+      shift
+      ;;
+    --instructions)
+      shift
+      user_instructions="$1"
       shift
       ;;
     *)
@@ -44,6 +50,11 @@ if [ -z "$staged_diff" ]; then
   staged_stat="No staged changes"
 fi
 staged_changes="File summary:\n$staged_stat\n\nFull diff:\n$staged_diff"
+
+# Append user-provided instructions if present
+if [ -n "$user_instructions" ]; then
+  staged_changes="$staged_changes\n\nImportant and explicit instructions from user about the commit message:\n$user_instructions"
+fi
 
 # Get last 10 commit messages to provide context to OpenAI
 recent_commits=$(git log --oneline -10 2>/dev/null | sed 's/^[a-f0-9]* //' || echo "")
